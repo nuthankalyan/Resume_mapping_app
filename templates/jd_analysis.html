@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Description Analysis - Resume Skill Extractor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="main-content">
+            <!-- Header -->
+            <div class="header">
+                <h1 class="title">💼 Job Description Analysis</h1>
+                <p class="subtitle">Extract key information and requirements from job descriptions</p>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <div class="nav-tabs">
+                <a href="/" class="nav-tab">📄 Resume Analysis</a>
+                <a href="/jd-analysis" class="nav-tab active">💼 JD Analysis</a>
+            </div>
+
+            <!-- JD Input Section -->
+            <div class="jd-input-section">
+                <h2 class="section-subtitle">Paste Job Description</h2>
+                <form id="jdForm">
+                    <textarea 
+                        id="jdTextarea" 
+                        placeholder="Paste your job description here... (minimum 50 characters)" 
+                        rows="10"
+                        class="jd-textarea"
+                        required
+                    ></textarea>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="analyzeBtn">
+                            🔍 Analyze Job Description
+                        </button>
+                        <button type="reset" class="btn btn-secondary">
+                            🔄 Clear
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="loadSampleJD()">
+                            📋 Load Sample JD
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Analysis Status -->
+            <div id="analysisStatus"></div>
+
+            <!-- Results Section -->
+            <div id="resultsSection" class="results-section" style="display: none;">
+                <!-- Job Title -->
+                <div id="jobTitleBox" class="result-box" style="display: none;">
+                    <h3 class="result-title">📍 Job Title</h3>
+                    <p id="jobTitleValue" class="result-value"></p>
+                </div>
+
+                <!-- Experience Level -->
+                <div id="experienceBox" class="result-box" style="display: none;">
+                    <h3 class="result-title">📅 Experience Level Required</h3>
+                    <p id="experienceLevelValue" class="result-value"></p>
+                </div>
+
+                <!-- NER Keywords -->
+                <div id="nerBox" class="result-box" style="display: none;">
+                    <h3 class="result-title">🏷️ NER Keywords</h3>
+                    <div class="keywords-container" id="nerKeywords"></div>
+                </div>
+
+                <!-- Key Responsibilities -->
+                <div id="responsibilitiesBox" class="result-box" style="display: none;">
+                    <h3 class="result-title">📋 Key Responsibilities</h3>
+                    <ul id="responsibilitiesList" class="result-list"></ul>
+                </div>
+
+                <!-- Required Skills -->
+                <div id="skillsBox" class="result-box" style="display: none;">
+                    <h3 class="result-title">⚙️ Required Skills</h3>
+                    <div class="skills-container" id="requiredSkills"></div>
+                </div>
+
+                <!-- Key Technologies -->
+                <div id="technologiesBox" class="result-box" style="display: none;">
+                    <h3 class="result-title">💻 Key Technologies</h3>
+                    <div class="technologies-container" id="keyTechnologies"></div>
+                </div>
+
+                <!-- Qualifications -->
+                <div id="qualificationsBox" class="result-box" style="display: none;">
+                    <h3 class="result-title">🎓 Required Qualifications</h3>
+                    <ul id="qualificationsList" class="result-list"></ul>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="action-buttons" style="margin-top: 2rem;">
+                    <button class="btn btn-primary" onclick="analyzeAnother()">
+                        🔍 Analyze Another JD
+                    </button>
+                    <button class="btn btn-secondary" onclick="downloadResults()">
+                        📥 Download Results
+                    </button>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer">
+                <p>Powered by Gemini API | Extract insights from job descriptions</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('jdForm');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const textarea = document.getElementById('jdTextarea');
+        const status = document.getElementById('analysisStatus');
+        const resultsSection = document.getElementById('resultsSection');
+
+        // Sample JD for testing
+        const SAMPLE_JD = `Senior Python Developer
+
+We are looking for an experienced Senior Python Developer to join our team. You will work on scalable distributed systems and lead technical initiatives.
+
+5+ years of professional software development experience required.
+
+Key Responsibilities:
+- Design and implement scalable Python applications and microservices
+- Lead code reviews and mentor junior developers on best practices
+- Collaborate with product and design teams on feature development and architecture
+- Optimize database queries and improve system performance
+- Participate in DevOps improvements and CI/CD pipeline development
+- Troubleshoot and debug complex system issues
+- Document technical decisions and create architectural diagrams
+
+Required Skills:
+- Advanced Python proficiency (3.8+)
+- SQL and NoSQL database design and optimization
+- RESTful API design and development
+- Docker and container orchestration
+- AWS cloud services (EC2, S3, Lambda, RDS)
+- Git version control and GitHub workflows
+- Agile development methodologies
+- Strong communication and mentoring abilities
+
+Key Technologies:
+- Python, Flask, Django
+- PostgreSQL, MongoDB
+- Docker, Kubernetes
+- AWS, Jenkins
+- Pytest, Git
+
+Qualifications:
+- Bachelor's degree in Computer Science, Engineering, or related field
+- 5+ years in Python development
+- Experience with machine learning frameworks (TensorFlow, PyTorch) is a plus
+- Experience with microservices architecture
+- Excellent problem-solving and analytical skills
+- Ability to work in fast-paced environments`;
+
+        form.addEventListener('submit', analyzeJD);
+
+        function loadSampleJD() {
+            textarea.value = SAMPLE_JD;
+            textarea.focus();
+        }
+
+        async function analyzeJD(e) {
+            e.preventDefault();
+
+            const jdText = textarea.value.trim();
+
+            if (!jdText) {
+                showStatus('error', 'Please enter a job description');
+                return;
+            }
+
+            if (jdText.length < 50) {
+                showStatus('error', 'Job description is too short (minimum 50 characters)');
+                return;
+            }
+
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = '⏳ Analyzing...';
+            showStatus('loading', '🔍 Analyzing job description with Gemini API...');
+            resultsSection.style.display = 'none';
+
+            try {
+                const response = await fetch('/analyze-jd', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ jd_text: jdText })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayResults(data);
+                    showStatus('success', '✅ Job description analyzed successfully!');
+                } else {
+                    showStatus('error', data.error || 'Failed to analyze job description');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus('error', '❌ Error analyzing job description: ' + error.message);
+            } finally {
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = '🔍 Analyze Job Description';
+            }
+        }
+
+        function displayResults(data) {
+            // Clear previous results
+            resultsSection.style.display = 'block';
+            
+            // Check for errors
+            if (data.error) {
+                showStatus('error', data.error);
+                resultsSection.style.display = 'none';
+                return;
+            }
+
+            // Display Job Title
+            if (data.job_title) {
+                document.getElementById('jobTitleValue').textContent = data.job_title;
+                document.getElementById('jobTitleBox').style.display = 'block';
+            } else {
+                document.getElementById('jobTitleBox').style.display = 'none';
+            }
+
+            // Display Experience Level
+            if (data.experience_level) {
+                document.getElementById('experienceLevelValue').textContent = data.experience_level;
+                document.getElementById('experienceBox').style.display = 'block';
+            } else {
+                document.getElementById('experienceBox').style.display = 'none';
+            }
+
+            // Display NER Keywords with better formatting
+            if (data.ner_keywords && Array.isArray(data.ner_keywords) && data.ner_keywords.length > 0) {
+                const nerContainer = document.getElementById('nerKeywords');
+                nerContainer.innerHTML = '';
+                
+                // Group keywords by category for better display
+                const processedKeywords = data.ner_keywords.map(k => {
+                    if (typeof k === 'string') return k;
+                    return String(k);
+                }).filter(k => k && k.trim());
+                
+                processedKeywords.forEach(keyword => {
+                    const badge = document.createElement('span');
+                    badge.className = 'keyword-badge';
+                    badge.textContent = keyword.trim();
+                    badge.title = keyword;
+                    nerContainer.appendChild(badge);
+                });
+                document.getElementById('nerBox').style.display = 'block';
+                
+                // Log to console
+                console.log('NER Keywords:', processedKeywords);
+            } else {
+                document.getElementById('nerBox').style.display = 'none';
+            }
+
+            // Display Key Responsibilities
+            if (data.key_responsibilities && Array.isArray(data.key_responsibilities) && data.key_responsibilities.length > 0) {
+                const list = document.getElementById('responsibilitiesList');
+                list.innerHTML = '';
+                const responsibilities = data.key_responsibilities.map(r => {
+                    if (typeof r === 'string') return r;
+                    return String(r);
+                }).filter(r => r && r.trim());
+                
+                responsibilities.forEach(item => {
+                    const li = document.createElement('li');
+                    li.textContent = item.trim();
+                    list.appendChild(li);
+                });
+                document.getElementById('responsibilitiesBox').style.display = 'block';
+            } else {
+                document.getElementById('responsibilitiesBox').style.display = 'none';
+            }
+
+            // Display Required Skills
+            if (data.required_skills && Array.isArray(data.required_skills) && data.required_skills.length > 0) {
+                const skillsContainer = document.getElementById('requiredSkills');
+                skillsContainer.innerHTML = '';
+                const skills = data.required_skills.map(s => {
+                    if (typeof s === 'string') return s;
+                    return String(s);
+                }).filter(s => s && s.trim());
+                
+                skills.forEach(skill => {
+                    const badge = document.createElement('span');
+                    badge.className = 'skill-badge';
+                    badge.textContent = skill.trim();
+                    badge.title = skill;
+                    skillsContainer.appendChild(badge);
+                });
+                document.getElementById('skillsBox').style.display = 'block';
+            } else {
+                document.getElementById('skillsBox').style.display = 'none';
+            }
+
+            // Display Key Technologies
+            if (data.key_technologies && Array.isArray(data.key_technologies) && data.key_technologies.length > 0) {
+                const techContainer = document.getElementById('keyTechnologies');
+                techContainer.innerHTML = '';
+                const techs = data.key_technologies.map(t => {
+                    if (typeof t === 'string') return t;
+                    return String(t);
+                }).filter(t => t && t.trim());
+                
+                techs.forEach(tech => {
+                    const badge = document.createElement('span');
+                    badge.className = 'tech-badge';
+                    badge.textContent = tech.trim();
+                    badge.title = tech;
+                    techContainer.appendChild(badge);
+                });
+                document.getElementById('technologiesBox').style.display = 'block';
+            } else {
+                document.getElementById('technologiesBox').style.display = 'none';
+            }
+
+            // Display Qualifications
+            if (data.qualifications && Array.isArray(data.qualifications) && data.qualifications.length > 0) {
+                const list = document.getElementById('qualificationsList');
+                list.innerHTML = '';
+                const quals = data.qualifications.map(q => {
+                    if (typeof q === 'string') return q;
+                    return String(q);
+                }).filter(q => q && q.trim());
+                
+                quals.forEach(item => {
+                    const li = document.createElement('li');
+                    li.textContent = item.trim();
+                    list.appendChild(li);
+                });
+                document.getElementById('qualificationsBox').style.display = 'block';
+            } else {
+                document.getElementById('qualificationsBox').style.display = 'none';
+            }
+            
+            // Scroll to results
+            setTimeout(() => {
+                resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+        }
+
+        function showStatus(type, message) {
+            const statusDiv = document.getElementById('analysisStatus');
+            const className = type === 'success' ? 'success-message' : type === 'loading' ? 'loading' : 'error-message';
+            
+            if (type === 'loading') {
+                statusDiv.innerHTML = `
+                    <div class="${className}">
+                        <span class="spinner"></span>
+                        <p>${message}</p>
+                    </div>
+                `;
+            } else {
+                statusDiv.innerHTML = `<div class="${className}"><p>${message}</p></div>`;
+            }
+        }
+
+        function analyzeAnother() {
+            textarea.value = '';
+            textarea.focus();
+            resultsSection.style.display = 'none';
+            document.getElementById('analysisStatus').innerHTML = '';
+        }
+
+        function downloadResults() {
+            const results = {
+                jobTitle: document.getElementById('jobTitleValue').textContent,
+                experienceLevel: document.getElementById('experienceLevelValue').textContent,
+                nerKeywords: Array.from(document.querySelectorAll('#nerKeywords .keyword-badge')).map(el => el.textContent),
+                responsibilities: Array.from(document.querySelectorAll('#responsibilitiesList li')).map(el => el.textContent),
+                skills: Array.from(document.querySelectorAll('#requiredSkills .skill-badge')).map(el => el.textContent),
+                technologies: Array.from(document.querySelectorAll('#keyTechnologies .tech-badge')).map(el => el.textContent),
+                qualifications: Array.from(document.querySelectorAll('#qualificationsList li')).map(el => el.textContent),
+            };
+
+            const dataStr = JSON.stringify(results, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `jd-analysis-${new Date().getTime()}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>

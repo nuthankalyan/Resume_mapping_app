@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume Skill Extractor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="main-content">
+            <!-- Header -->
+            <div class="header">
+                <h1 class="title">📄 Resume Skill Extractor</h1>
+                <p class="subtitle">Upload your resume to extract key skills</p>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <div class="nav-tabs">
+                <a href="/" class="nav-tab active">📄 Resume Analysis</a>
+                <a href="/jd-analysis" class="nav-tab">💼 JD Analysis</a>
+            </div>
+
+            <!-- Upload Section -->
+            <div class="upload-section">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="upload-box">
+                        <div class="upload-icon">☁️</div>
+                        <p class="upload-text">Drag and drop file here</p>
+                        <p class="upload-subtext">or</p>
+                        <label for="fileInput" class="browse-label">Browse files</label>
+                        <input type="file" id="fileInput" name="file" accept=".pdf" style="display: none;">
+                        <p class="file-limit">Limit 200MB per file • PDF</p>
+                    </div>
+                    <div id="uploadStatus" class="upload-status"></div>
+                </form>
+            </div>
+
+            <!-- Info Message -->
+            <div class="info-box">
+                <span class="info-icon">📌</span>
+                <p>Upload your resume in PDF format to get started</p>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer">
+                <p>Supported format: PDF | Secure & Private</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const uploadForm = document.getElementById('uploadForm');
+        const uploadBox = document.querySelector('.upload-box');
+        const uploadStatus = document.getElementById('uploadStatus');
+
+        // Handle file selection from input
+        fileInput.addEventListener('change', handleFileSelect);
+
+        // Handle drag and drop
+        uploadBox.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadBox.classList.add('dragover');
+        });
+
+        uploadBox.addEventListener('dragleave', () => {
+            uploadBox.classList.remove('dragover');
+        });
+
+        uploadBox.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadBox.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            fileInput.files = files;
+            handleFileSelect({ target: { files } });
+        });
+
+        // Handle file selection
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            if (files.length === 0) return;
+
+            const file = files[0];
+
+            // Validate file type
+            if (!file.name.endsWith('.pdf')) {
+                showError('Only PDF files are allowed');
+                return;
+            }
+
+            // Validate file size (200MB)
+            if (file.size > 200 * 1024 * 1024) {
+                showError('File is too large. Maximum size is 200MB');
+                return;
+            }
+
+            // Upload file
+            uploadFile(file);
+        }
+
+        // Upload file to server
+        function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            uploadStatus.innerHTML = '<div class="loading"><span class="spinner"></span> Analyzing resume...</div>';
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showSuccess(data);
+                    // Redirect to results page after 1.5 seconds
+                    setTimeout(() => {
+                        const skillsParam = data.skills.map(s => 'skills=' + encodeURIComponent(s)).join('&');
+                        window.location.href = `/results?filename=${encodeURIComponent(data.filename)}&file_size=${data.file_size}&${skillsParam}`;
+                    }, 1500);
+                } else {
+                    showError(data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showError('An error occurred while uploading the file');
+            });
+        }
+
+        // Show success message
+        function showSuccess(data) {
+            uploadStatus.innerHTML = `
+                <div class="success-message">
+                    <span class="success-icon">✅</span>
+                    <p>Resume uploaded successfully!</p>
+                </div>
+            `;
+        }
+
+        // Show error message
+        function showError(message) {
+            uploadStatus.innerHTML = `
+                <div class="error-message">
+                    <span class="error-icon">❌</span>
+                    <p>${message}</p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

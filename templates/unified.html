@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume to Job Description Matcher</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Resume to Job Description Matcher</h1>
+            <p class="subtitle">Analyze job descriptions and match them with your resume</p>
+        </header>
+
+        <main class="main-content">
+            <!-- Input Section -->
+            <section class="input-section">
+                <div class="inputs-grid">
+                    <!-- JD Input -->
+                    <div class="input-card jd-card">
+                        <h2>Job Description</h2>
+                        <form id="jd-form" class="jd-form">
+                            <textarea 
+                                id="jd-text" 
+                                class="jd-textarea" 
+                                placeholder="Paste the job description here... (min 50 characters)"
+                                rows="10"
+                                required
+                            ></textarea>
+                            <div class="char-counter">
+                                <span id="char-count">0</span> / 50 characters
+                            </div>
+                            <button type="button" id="analyze-jd-btn" class="btn btn-primary" disabled>
+                                Analyze Job Description
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Resume Upload -->
+                    <div class="input-card resume-card">
+                        <h2>Your Resume</h2>
+                        <div class="upload-section">
+                            <div class="file-input-wrapper">
+                                <input 
+                                    type="file" 
+                                    id="resume-file" 
+                                    class="file-input" 
+                                    accept=".pdf"
+                                    required
+                                >
+                                <label for="resume-file" class="file-label">
+                                    <span class="upload-icon">📄</span>
+                                    <span class="upload-text">Choose PDF File</span>
+                                    <span class="upload-hint">or drag and drop</span>
+                                </label>
+                            </div>
+                            <button type="button" id="upload-btn" class="btn btn-primary">
+                                Upload Resume
+                            </button>
+                        </div>
+                        <div id="upload-status" class="upload-status"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Analysis Results Section -->
+            <section id="results-section" class="results-section" style="display: none;">
+                <div class="results-grid">
+                    <!-- JD Analysis -->
+                    <div class="result-card jd-results">
+                        <h3>📋 Job Description Analysis</h3>
+                        <div id="jd-analysis-content" class="analysis-content"></div>
+                    </div>
+
+                    <!-- Resume Analysis -->
+                    <div class="result-card resume-results">
+                        <h3>📄 Resume Analysis</h3>
+                        <div id="resume-analysis-content" class="analysis-content"></div>
+                    </div>
+                </div>
+
+                <!-- Match Score Section -->
+                <div class="match-section">
+                    <h2>🎯 Match Score</h2>
+                    <div class="match-container">
+                        <div id="match-score" class="match-score-display"></div>
+                        <div id="match-details" class="match-details"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Loading Spinner -->
+            <div id="loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Processing your data...</p>
+            </div>
+
+            <!-- Error Message -->
+            <div id="error-message" class="error-message" style="display: none;"></div>
+        </main>
+    </div>
+
+    <script>
+        // State management
+        let currentJDAnalysis = null;
+        let currentResumeAnalysis = null;
+
+        // Character counter for JD textarea
+        const jdTextarea = document.getElementById('jd-text');
+        const charCount = document.getElementById('char-count');
+        const analyzeJdBtn = document.getElementById('analyze-jd-btn');
+
+        jdTextarea.addEventListener('input', function() {
+            const count = this.value.length;
+            charCount.textContent = count;
+            analyzeJdBtn.disabled = count < 50;
+        });
+
+        // File drag and drop
+        const fileInputWrapper = document.querySelector('.file-input-wrapper');
+        const fileInput = document.getElementById('resume-file');
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            fileInputWrapper.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            fileInputWrapper.addEventListener(eventName, () => {
+                fileInputWrapper.classList.add('drag-over');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            fileInputWrapper.addEventListener(eventName, () => {
+                fileInputWrapper.classList.remove('drag-over');
+            });
+        });
+
+        fileInputWrapper.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            fileInput.files = files;
+        });
+
+        // File input validation
+        fileInput.addEventListener('change', function() {
+            const filename = this.files[0]?.name || '';
+            const label = document.querySelector('.file-label');
+            if (filename) {
+                label.innerHTML = `<span class="upload-icon">✓</span><span class="upload-text">${filename}</span>`;
+            }
+        });
+
+        // Upload Resume
+        document.getElementById('upload-btn').addEventListener('click', async function() {
+            const fileInput = document.getElementById('resume-file');
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                showError('Please select a PDF file');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            if (!file.name.toLowerCase().endsWith('.pdf')) {
+                showError('Please select a PDF file');
+                return;
+            }
+
+            showLoading(true);
+            showError('');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Upload failed');
+                }
+
+                currentResumeAnalysis = data.resume_analysis;
+                showUploadStatus(`✓ Resume uploaded successfully: ${data.filename}`);
+                
+                // If JD is already analyzed, calculate match score
+                if (currentJDAnalysis) {
+                    await calculateMatch();
+                } else {
+                    showMessage('Resume uploaded! Now analyze a job description to see the match score.');
+                }
+
+            } catch (error) {
+                showError(`Upload failed: ${error.message}`);
+            } finally {
+                showLoading(false);
+            }
+        });
+
+        // Analyze JD
+        document.getElementById('analyze-jd-btn').addEventListener('click', async function() {
+            const jdText = document.getElementById('jd-text').value.trim();
+
+            if (jdText.length < 50) {
+                showError('Job description must be at least 50 characters');
+                return;
+            }
+
+            showLoading(true);
+            showError('');
+
+            try {
+                const requestData = {
+                    'jd_text': jdText
+                };
+
+                if (currentResumeAnalysis) {
+                    requestData['resume_analysis'] = currentResumeAnalysis;
+                }
+
+                const response = await fetch('/analyze-jd', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Analysis failed');
+                }
+
+                currentJDAnalysis = data.jd_analysis;
+
+                // Display JD analysis results
+                displayJDAnalysis(data.jd_analysis);
+
+                // If resume is loaded and match calculation is available, show results
+                if (currentResumeAnalysis && data.match) {
+                    displayResumeAnalysis(currentResumeAnalysis);
+                    displayMatchScore(data.match);
+                    document.getElementById('results-section').style.display = 'block';
+                } else if (currentResumeAnalysis) {
+                    // Calculate match score manually if not included in response
+                    displayResumeAnalysis(currentResumeAnalysis);
+                    await calculateMatch();
+                } else {
+                    document.getElementById('results-section').style.display = 'block';
+                    showMessage('Job description analyzed! Upload your resume to see the match score.');
+                }
+
+            } catch (error) {
+                showError(`Analysis failed: ${error.message}`);
+            } finally {
+                showLoading(false);
+            }
+        });
+
+        // Calculate match score when both analyses are available
+        async function calculateMatch() {
+            if (!currentJDAnalysis || !currentResumeAnalysis) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/analyze-jd', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        'jd_text': document.getElementById('jd-text').value,
+                        'resume_analysis': currentResumeAnalysis
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.match) {
+                    displayResumeAnalysis(currentResumeAnalysis);
+                    displayMatchScore(data.match);
+                    document.getElementById('results-section').style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error calculating match:', error);
+            }
+        }
+
+        // Display JD Analysis
+        function displayJDAnalysis(analysis) {
+            const container = document.getElementById('jd-analysis-content');
+            
+            let html = '';
+
+            if (analysis.job_title) {
+                html += `<div class="analysis-item"><strong>Position:</strong> ${analysis.job_title}</div>`;
+            }
+
+            if (analysis.experience_level) {
+                html += `<div class="analysis-item"><strong>Experience Level:</strong> ${analysis.experience_level}</div>`;
+            }
+
+            if (analysis.required_skills && analysis.required_skills.length > 0) {
+                html += `
+                    <div class="analysis-item">
+                        <strong>Required Skills:</strong>
+                        <div class="skills-badges">
+                            ${analysis.required_skills.map(skill => 
+                                `<span class="badge badge-skill">${skill}</span>`
+                            ).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (analysis.key_technologies && analysis.key_technologies.length > 0) {
+                html += `
+                    <div class="analysis-item">
+                        <strong>Technologies:</strong>
+                        <div class="skills-badges">
+                            ${analysis.key_technologies.map(tech => 
+                                `<span class="badge badge-tech">${tech}</span>`
+                            ).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (analysis.qualifications && analysis.qualifications.length > 0) {
+                html += `
+                    <div class="analysis-item">
+                        <strong>Qualifications:</strong>
+                        <ul>
+                            ${analysis.qualifications.map(qual => 
+                                `<li>${qual}</li>`
+                            ).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html || '<p>No details extracted</p>';
+        }
+
+        // Display Resume Analysis
+        function displayResumeAnalysis(analysis) {
+            const container = document.getElementById('resume-analysis-content');
+            
+            let html = '';
+
+            if (analysis.candidate_name) {
+                html += `<div class="analysis-item"><strong>Candidate:</strong> ${analysis.candidate_name}</div>`;
+            }
+
+            if (analysis.experience_level) {
+                html += `<div class="analysis-item"><strong>Experience Level:</strong> ${analysis.experience_level}</div>`;
+            }
+
+            if (analysis.skills && analysis.skills.length > 0) {
+                html += `
+                    <div class="analysis-item">
+                        <strong>Skills:</strong>
+                        <div class="skills-badges">
+                            ${analysis.skills.map(skill => 
+                                `<span class="badge badge-skill">${skill}</span>`
+                            ).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (analysis.technical_skills && analysis.technical_skills.length > 0) {
+                html += `
+                    <div class="analysis-item">
+                        <strong>Technical Skills:</strong>
+                        <div class="skills-badges">
+                            ${analysis.technical_skills.map(tech => 
+                                `<span class="badge badge-tech">${tech}</span>`
+                            ).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (analysis.key_technologies && analysis.key_technologies.length > 0) {
+                html += `
+                    <div class="analysis-item">
+                        <strong>Technologies:</strong>
+                        <div class="skills-badges">
+                            ${analysis.key_technologies.map(tech => 
+                                `<span class="badge badge-tech">${tech}</span>`
+                            ).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            container.innerHTML = html || '<p>No details extracted</p>';
+        }
+
+        // Display Match Score
+        function displayMatchScore(match) {
+            const scoreContainer = document.getElementById('match-score');
+            const detailsContainer = document.getElementById('match-details');
+
+            const score = match.match_score;
+            const suitability = match.suitability;
+            const color = match.color;
+            const recommendation = match.recommendation;
+
+            // Display score
+            scoreContainer.innerHTML = `
+                <div class="score-circle" style="border-color: ${color}; background: linear-gradient(135deg, ${color}15 0%, ${color}05 100%);">
+                    <div class="score-value">${Math.round(score)}%</div>
+                    <div class="score-label">${suitability}</div>
+                </div>
+                <div class="recommendation">${recommendation}</div>
+            `;
+
+            // Display details
+            let detailsHtml = '<div class="match-breakdown">';
+
+            if (match.details) {
+                const details = match.details;
+
+                if (details.matched_skills && details.matched_skills.length > 0) {
+                    detailsHtml += `
+                        <div class="detail-item">
+                            <h4>✓ Matched Skills</h4>
+                            <div class="skills-badges">
+                                ${details.matched_skills.map(skill => 
+                                    `<span class="badge badge-matched">${skill}</span>`
+                                ).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (details.missing_skills && details.missing_skills.length > 0) {
+                    detailsHtml += `
+                        <div class="detail-item">
+                            <h4>✗ Missing Skills</h4>
+                            <div class="skills-badges">
+                                ${details.missing_skills.map(skill => 
+                                    `<span class="badge badge-missing">${skill}</span>`
+                                ).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (details.matched_technologies && details.matched_technologies.length > 0) {
+                    detailsHtml += `
+                        <div class="detail-item">
+                            <h4>✓ Matched Technologies</h4>
+                            <div class="skills-badges">
+                                ${details.matched_technologies.map(tech => 
+                                    `<span class="badge badge-matched">${tech}</span>`
+                                ).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                if (details.missing_technologies && details.missing_technologies.length > 0) {
+                    detailsHtml += `
+                        <div class="detail-item">
+                            <h4>✗ Missing Technologies</h4>
+                            <div class="skills-badges">
+                                ${details.missing_technologies.map(tech => 
+                                    `<span class="badge badge-missing">${tech}</span>`
+                                ).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            detailsHtml += '</div>';
+            detailsContainer.innerHTML = detailsHtml;
+        }
+
+        // Helper functions
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'flex' : 'none';
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            if (message) {
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+            } else {
+                errorDiv.style.display = 'none';
+            }
+        }
+
+        function showMessage(message) {
+            // Create a temporary alert-style message
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            errorDiv.style.background = '#d4edda';
+            errorDiv.style.color = '#155724';
+            errorDiv.style.borderColor = '#c3e6cb';
+        }
+
+        function showUploadStatus(message) {
+            const statusDiv = document.getElementById('upload-status');
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

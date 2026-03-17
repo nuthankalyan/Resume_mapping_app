@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skill Extraction Results - Resume Skill Extractor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="main-content">
+            <!-- Header -->
+            <div class="header">
+                <h1 class="title">📄 Resume Skill Extractor</h1>
+                <p class="subtitle">Your resume has been analyzed</p>
+            </div>
+
+            <!-- Success Message -->
+            <div class="success-box">
+                <span class="success-icon">✅</span>
+                <p>Resume uploaded successfully!</p>
+            </div>
+
+            <!-- File Info -->
+            <div class="file-info">
+                <div class="info-item">
+                    <span class="info-label">File Name</span>
+                    <span class="info-value">{{ filename }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">File Size</span>
+                    <span class="info-value">{{ file_size }} MB</span>
+                </div>
+            </div>
+
+            <hr class="divider">
+
+            <!-- Skills Section -->
+            <div class="skills-section">
+                <h2 class="section-header">🎯 Extracted Skills</h2>
+                
+                {% if skills %}
+                    <p class="skill-count"><strong>Found {{ skill_count }} skills:</strong></p>
+                    
+                    <!-- Skills Badges -->
+                    <div class="skills-container">
+                        {% for skill in skills %}
+                            <span class="skill-badge">{{ skill }}</span>
+                        {% endfor %}
+                    </div>
+
+                    <!-- View as List Toggle -->
+                    <details class="expander">
+                        <summary class="expander-header">📋 View as List</summary>
+                        <div class="expander-content">
+                            <ol class="skill-list">
+                                {% for skill in skills %}
+                                    <li>{{ skill }}</li>
+                                {% endfor %}
+                            </ol>
+                        </div>
+                    </details>
+                {% else %}
+                    <div class="warning-box">
+                        <span class="warning-icon">⚠️</span>
+                        <p>No skills found in the resume. Please check the file.</p>
+                    </div>
+                {% endif %}
+            </div>
+
+            <hr class="divider">
+
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <button class="btn btn-primary" onclick="saveResume()">
+                    💾 Save Resume
+                </button>
+                <button class="btn btn-secondary" onclick="uploadAnother()">
+                    📤 Upload Another
+                </button>
+            </div>
+
+            <!-- Save Status -->
+            <div id="saveStatus"></div>
+
+            <!-- Footer -->
+            <div class="footer">
+                <p>Supported format: PDF | Secure & Private</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Save resume
+        function saveResume() {
+            const filename = '{{ filename }}';
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '⏳ Saving...';
+
+            fetch('/save-resume', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ filename: filename })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showSaveStatus('success', '✅ ' + data.message);
+                    btn.textContent = '💾 Save Resume';
+                } else {
+                    showSaveStatus('error', '❌ Failed to save resume');
+                    btn.disabled = false;
+                    btn.textContent = '💾 Save Resume';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showSaveStatus('error', '❌ Error saving resume');
+                btn.disabled = false;
+                btn.textContent = '💾 Save Resume';
+            });
+        }
+
+        // Upload another file
+        function uploadAnother() {
+            window.location.href = '/';
+        }
+
+        // Show save status message
+        function showSaveStatus(type, message) {
+            const statusDiv = document.getElementById('saveStatus');
+            const className = type === 'success' ? 'success-message' : 'error-message';
+            statusDiv.innerHTML = `<div class="${className}"><p>${message}</p></div>`;
+        }
+    </script>
+</body>
+</html>
