@@ -3,19 +3,23 @@ from werkzeug.utils import secure_filename
 from pypdf import PdfReader
 import os
 import re
-import google.generativeai as genai
 import json
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 
 # Configure Gemini API
-# You'll need to set the GEMINI_API_KEY environment variable
-GEMINI_API_KEY = "AIzaSyCsTwtrv_fowavpuc5SBrAZMFBt6NSHiAk"
+# API key is loaded from .env file
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
     print(f"✓ Gemini API configured successfully")
 else:
-    print("✗ Warning: GEMINI_API_KEY environment variable not set. Analysis will not work.")
+    print("✗ Warning: GEMINI_API_KEY not found in .env file. Analysis will not work.")
 
 # Configuration
 UPLOAD_FOLDER = 'uploads'
